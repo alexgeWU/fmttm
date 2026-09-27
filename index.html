@@ -92,7 +92,24 @@ body {
 		</style>
 		<link id="-gd-engine-icon" rel="icon" type="image/png" href="Fly Me to the Moon.icon.png" />
 <link rel="apple-touch-icon" href="Fly Me to the Moon.apple-touch-icon.png"/>
-
+<script>
+	// Fix for Godot 4 Web Audio: Force resume AudioContext on first click
+	const _audioContextList = [];
+	const _OriginalAudioContext = window.AudioContext || window.webkitAudioContext;
+	if (_OriginalAudioContext) {
+		window.AudioContext = function (...args) {
+			const ctx = new _OriginalAudioContext(...args);
+			_audioContextList.push(ctx);
+			return ctx;
+		};
+		window.webkitAudioContext = window.AudioContext;
+	}
+	document.addEventListener('pointerdown', () => {
+		_audioContextList.forEach(ctx => {
+			if (ctx.state !== 'running') ctx.resume();
+		});
+	}, { capture: true });
+</script>
 	</head>
 	<body>
 		<canvas id="canvas">
