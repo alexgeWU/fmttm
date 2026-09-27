@@ -4,7 +4,6 @@
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0">
 		<title>Fly Me to the Moon</title>
-		<script src="coi-serviceworker.js"></script>
 		<style>
 html, body, #canvas {
 	margin: 0;
@@ -90,54 +89,12 @@ body {
 	text-align: center;
 	z-index: 1;
 }
-
-/* ---------- Click-to-Start overlay ---------- */
-#start-overlay {
-	position: fixed;
-	inset: 0;
-	z-index: 9999;
-	background: #000;
-	display: flex;
-	flex-direction: column;
-	justify-content: center;
-	align-items: center;
-	cursor: pointer;
-	user-select: none;
-	-webkit-user-select: none;
-}
-
-#start-overlay h1 {
-	font-family: 'Georgia', 'Times New Roman', serif;
-	font-size: clamp(1.6rem, 5vw, 3.2rem);
-	color: #e8d5b5;
-	letter-spacing: 0.12em;
-	text-transform: uppercase;
-	animation: pulse 2s ease-in-out infinite;
-}
-
-#start-overlay p {
-	font-family: 'Noto Sans', 'Droid Sans', Arial, sans-serif;
-	font-size: clamp(0.8rem, 2vw, 1.1rem);
-	color: #887766;
-	margin-top: 1.2rem;
-}
-
-@keyframes pulse {
-	0%, 100% { opacity: 0.6; }
-	50%      { opacity: 1.0; }
-}
 		</style>
 		<link id="-gd-engine-icon" rel="icon" type="image/png" href="index.icon.png" />
 <link rel="apple-touch-icon" href="index.apple-touch-icon.png"/>
 
 	</head>
 	<body>
-		<!-- Click-to-Start gate -->
-		<div id="start-overlay">
-			<h1>Click to Start</h1>
-			<p>Fly Me to the Moon</p>
-		</div>
-
 		<canvas id="canvas">
 			Your browser does not support the canvas tag.
 		</canvas>
@@ -154,61 +111,11 @@ body {
 
 		<script src="index.js"></script>
 		<script>
-const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":771632,"index.wasm":39514754},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4};
+const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":771744,"index.wasm":39514754},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4};
 const GODOT_THREADS_ENABLED = false;
 const engine = new Engine(GODOT_CONFIG);
 
-// --- AudioContext monkey-patch: auto-resume on creation after user gesture ---
 (function () {
-	const _OrigAC = window.AudioContext || window.webkitAudioContext;
-	if (_OrigAC) {
-		const _acList = [];
-		window.AudioContext = function (...args) {
-			const ctx = new _OrigAC(...args);
-			_acList.push(ctx);
-			if (ctx.state !== 'running') ctx.resume();
-			return ctx;
-		};
-		window.AudioContext.prototype = _OrigAC.prototype;
-		window.webkitAudioContext = window.AudioContext;
-
-		// Resume ALL known contexts (tracked + Godot internal) on any gesture
-		function resumeAll() {
-			_acList.forEach(ctx => { if (ctx.state !== 'running') ctx.resume(); });
-			try {
-				var gc = window.GodotAudio && window.GodotAudio.ctx;
-				if (gc && gc.state !== 'running') gc.resume();
-			} catch(e) {}
-		}
-		['click','touchstart','pointerdown','keydown'].forEach(e =>
-			document.addEventListener(e, resumeAll, { capture: true })
-		);
-	}
-})();
-
-// --- Wait for click, then start the game ---
-const overlay = document.getElementById('start-overlay');
-
-function onUserStart() {
-	overlay.removeEventListener('click', onUserStart);
-	overlay.removeEventListener('touchend', onUserStart);
-
-	overlay.querySelector('h1').textContent = 'Loading\u2026';
-	overlay.querySelector('h1').style.animation = 'none';
-	overlay.querySelector('h1').style.opacity = '1';
-	overlay.querySelector('p').textContent = '';
-
-	// Small delay so the browser registers the user gesture, then start Godot
-	setTimeout(function () {
-		overlay.style.display = 'none';
-		startGodot();
-	}, 500);
-}
-
-overlay.addEventListener('click', onUserStart);
-overlay.addEventListener('touchend', onUserStart);
-
-function startGodot() {
 	const statusOverlay = document.getElementById('status');
 	const statusProgress = document.getElementById('status-progress');
 	const statusNotice = document.getElementById('status-notice');
