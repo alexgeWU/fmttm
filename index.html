@@ -130,7 +130,7 @@ body {
 		<link rel="apple-touch-icon" href="Fly Me to the Moon.apple-touch-icon.png"/>
 	</head>
 	<body>
-		<!-- Click-to-Start gate: guarantees a user gesture before any AudioContext -->
+		<!-- Click-to-Start gate -->
 		<div id="start-overlay">
 			<h1>Click to Start</h1>
 			<p>Fly Me to the Moon</p>
@@ -150,125 +150,118 @@ body {
 			<div id="status-notice"></div>
 		</div>
 
+		<!-- Load Godot engine normally so it's ready -->
+		<script src="Fly Me to the Moon.js"></script>
 		<script>
-// ---- Click-to-Start: don't load the engine until the user clicks ----
-const overlay = document.getElementById('start-overlay');
+const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"Fly Me to the Moon","experimentalVK":false,"fileSizes":{"Fly Me to the Moon.pck":771088,"Fly Me to the Moon.wasm":39514754},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4};
+const GODOT_THREADS_ENABLED = false;
+const engine = new Engine(GODOT_CONFIG);
 
-function onUserStart() {
-	overlay.removeEventListener('click', onUserStart);
-	overlay.removeEventListener('touchend', onUserStart);
-
-	// Swap text to "Loading…"
-	overlay.querySelector('h1').textContent = 'Loading\u2026';
-	overlay.querySelector('h1').style.animation = 'none';
-	overlay.querySelector('h1').style.opacity = '1';
-	overlay.querySelector('p').textContent = '';
-
-	// Wait 2 seconds, then boot Godot
-	setTimeout(bootGodot, 2000);
-}
-
-overlay.addEventListener('click', onUserStart);
-overlay.addEventListener('touchend', onUserStart);
-
-function bootGodot() {
-	// Hide the overlay
-	overlay.style.display = 'none';
-
-	// Force-resume any AudioContexts that snuck in early
+// --- AudioContext monkey-patch: auto-resume on creation after user gesture ---
+(function () {
 	const _OrigAC = window.AudioContext || window.webkitAudioContext;
 	if (_OrigAC) {
 		const _acList = [];
 		window.AudioContext = function (...args) {
 			const ctx = new _OrigAC(...args);
 			_acList.push(ctx);
-			// Immediately resume since we already have a user gesture
 			if (ctx.state !== 'running') ctx.resume();
 			return ctx;
 		};
 		window.AudioContext.prototype = _OrigAC.prototype;
 		window.webkitAudioContext = window.AudioContext;
+
+		// Also resume on any future interaction, just in case
+		function resumeAll() {
+			_acList.forEach(ctx => { if (ctx.state !== 'running') ctx.resume(); });
+		}
+		['click','touchstart','pointerdown','keydown'].forEach(e =>
+			document.addEventListener(e, resumeAll, { capture: true })
+		);
+	}
+})();
+
+// --- Wait for click, then start the game ---
+const overlay = document.getElementById('start-overlay');
+
+function onUserStart() {
+	overlay.removeEventListener('click', onUserStart);
+	overlay.removeEventListener('touchend', onUserStart);
+
+	overlay.querySelector('h1').textContent = 'Loading\u2026';
+	overlay.querySelector('h1').style.animation = 'none';
+	overlay.querySelector('h1').style.opacity = '1';
+	overlay.querySelector('p').textContent = '';
+
+	// Small delay so the browser registers the user gesture, then start Godot
+	setTimeout(function () {
+		overlay.style.display = 'none';
+		startGodot();
+	}, 500);
+}
+
+overlay.addEventListener('click', onUserStart);
+overlay.addEventListener('touchend', onUserStart);
+
+function startGodot() {
+	const statusOverlay = document.getElementById('status');
+	const statusProgress = document.getElementById('status-progress');
+	const statusNotice = document.getElementById('status-notice');
+
+	let initializing = true;
+	let statusMode = '';
+
+	function setStatusMode(mode) {
+		if (statusMode === mode || !initializing) return;
+		if (mode === 'hidden') {
+			statusOverlay.remove();
+			initializing = false;
+			return;
+		}
+		statusOverlay.style.visibility = 'visible';
+		statusProgress.style.display = mode === 'progress' ? 'block' : 'none';
+		statusNotice.style.display = mode === 'notice' ? 'block' : 'none';
+		statusMode = mode;
 	}
 
-	// Now load the engine script and start
-	const script = document.createElement('script');
-	script.src = 'Fly Me to the Moon.js';
-	script.onload = function () {
-		const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"Fly Me to the Moon","experimentalVK":false,"fileSizes":{"Fly Me to the Moon.pck":770688,"Fly Me to the Moon.wasm":39514754},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4};
-		const GODOT_THREADS_ENABLED = false;
-		const engine = new Engine(GODOT_CONFIG);
-
-		const statusOverlay = document.getElementById('status');
-		const statusProgress = document.getElementById('status-progress');
-		const statusNotice = document.getElementById('status-notice');
-
-		let initializing = true;
-		let statusMode = '';
-
-		function setStatusMode(mode) {
-			if (statusMode === mode || !initializing) {
-				return;
-			}
-			if (mode === 'hidden') {
-				statusOverlay.remove();
-				initializing = false;
-				return;
-			}
-			statusOverlay.style.visibility = 'visible';
-			statusProgress.style.display = mode === 'progress' ? 'block' : 'none';
-			statusNotice.style.display = mode === 'notice' ? 'block' : 'none';
-			statusMode = mode;
-		}
-
-		function setStatusNotice(text) {
-			while (statusNotice.lastChild) {
-				statusNotice.removeChild(statusNotice.lastChild);
-			}
-			const lines = text.split('\n');
-			lines.forEach((line) => {
-				statusNotice.appendChild(document.createTextNode(line));
-				statusNotice.appendChild(document.createElement('br'));
-			});
-		}
-
-		function displayFailureNotice(err) {
-			console.error(err);
-			if (err instanceof Error) {
-				setStatusNotice(err.message);
-			} else if (typeof err === 'string') {
-				setStatusNotice(err);
-			} else {
-				setStatusNotice('An unknown error occurred.');
-			}
-			setStatusMode('notice');
-			initializing = false;
-		}
-
-		const missing = Engine.getMissingFeatures({
-			threads: GODOT_THREADS_ENABLED,
+	function setStatusNotice(text) {
+		while (statusNotice.lastChild) statusNotice.removeChild(statusNotice.lastChild);
+		text.split('\n').forEach((line) => {
+			statusNotice.appendChild(document.createTextNode(line));
+			statusNotice.appendChild(document.createElement('br'));
 		});
+	}
 
-		if (missing.length !== 0) {
-			const missingMsg = 'Error\nThe following features required to run Godot projects on the Web are missing:\n';
-			displayFailureNotice(missingMsg + missing.join('\n'));
-		} else {
-			setStatusMode('progress');
-			engine.startGame({
-				'onProgress': function (current, total) {
-					if (current > 0 && total > 0) {
-						statusProgress.value = current;
-						statusProgress.max = total;
-					} else {
-						statusProgress.removeAttribute('value');
-						statusProgress.removeAttribute('max');
-					}
-				},
-			}).then(() => {
-				setStatusMode('hidden');
-			}, displayFailureNotice);
-		}
-	};
-	document.body.appendChild(script);
+	function displayFailureNotice(err) {
+		console.error(err);
+		if (err instanceof Error) setStatusNotice(err.message);
+		else if (typeof err === 'string') setStatusNotice(err);
+		else setStatusNotice('An unknown error occurred.');
+		setStatusMode('notice');
+		initializing = false;
+	}
+
+	const missing = Engine.getMissingFeatures({ threads: GODOT_THREADS_ENABLED });
+
+	if (missing.length !== 0) {
+		const missingMsg = 'Error\nThe following features required to run Godot projects on the Web are missing:\n';
+		displayFailureNotice(missingMsg + missing.join('\n'));
+	} else {
+		setStatusMode('progress');
+		engine.startGame({
+			'onProgress': function (current, total) {
+				if (current > 0 && total > 0) {
+					statusProgress.value = current;
+					statusProgress.max = total;
+				} else {
+					statusProgress.removeAttribute('value');
+					statusProgress.removeAttribute('max');
+				}
+			},
+		}).then(() => {
+			setStatusMode('hidden');
+		}, displayFailureNotice);
+	}
 }
 		</script>
 	</body>
