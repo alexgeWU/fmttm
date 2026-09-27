@@ -1,35 +1,21 @@
-[gd_scene load_steps=3 format=3 uid="uid://c3x_mobile_controls"]
+[gd_scene load_steps=4 format=3 uid="uid://c3x_mobile_controls"]
 
 [ext_resource type="Script" path="res://scripts/mobile_controls.gd" id="1_mctl"]
 [ext_resource type="Texture2D" uid="uid://b23_touch_btn" path="res://assets/ui/touch_btn.png" id="2_btn"]
+[ext_resource type="Script" path="res://scripts/virtual_joystick.gd" id="3_joy"]
 
 [node name="MobileControls" type="CanvasLayer"]
 layer = 100
 script = ExtResource("1_mctl")
 
-[node name="Up" type="TouchScreenButton" parent="."]
-position = Vector2(150, 450)
-scale = Vector2(0.8, 0.8)
-texture_normal = ExtResource("2_btn")
-action = "move_up"
-
-[node name="Down" type="TouchScreenButton" parent="."]
-position = Vector2(150, 650)
-scale = Vector2(0.8, 0.8)
-texture_normal = ExtResource("2_btn")
-action = "move_down"
-
-[node name="Left" type="TouchScreenButton" parent="."]
-position = Vector2(50, 550)
-scale = Vector2(0.8, 0.8)
-texture_normal = ExtResource("2_btn")
-action = "move_left"
-
-[node name="Right" type="TouchScreenButton" parent="."]
-position = Vector2(250, 550)
-scale = Vector2(0.8, 0.8)
-texture_normal = ExtResource("2_btn")
-action = "move_right"
+[node name="Joystick" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 0
+offset_left = 60.0
+offset_top = 460.0
+offset_right = 260.0
+offset_bottom = 660.0
+script = ExtResource("3_joy")
 
 [node name="Attack" type="TouchScreenButton" parent="."]
 position = Vector2(1000, 550)
