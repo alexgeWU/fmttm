@@ -89,12 +89,53 @@ body {
 	text-align: center;
 	z-index: 1;
 }
+
+/* ---------- Click-to-Start overlay ---------- */
+#start-overlay {
+	position: fixed;
+	inset: 0;
+	z-index: 9999;
+	background: #000;
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	align-items: center;
+	cursor: pointer;
+	user-select: none;
+	-webkit-user-select: none;
+}
+
+#start-overlay h1 {
+	font-family: 'Georgia', 'Times New Roman', serif;
+	font-size: clamp(1.6rem, 5vw, 3.2rem);
+	color: #e8d5b5;
+	letter-spacing: 0.12em;
+	text-transform: uppercase;
+	animation: pulse 2s ease-in-out infinite;
+}
+
+#start-overlay p {
+	font-family: 'Noto Sans', 'Droid Sans', Arial, sans-serif;
+	font-size: clamp(0.8rem, 2vw, 1.1rem);
+	color: #887766;
+	margin-top: 1.2rem;
+}
+
+@keyframes pulse {
+	0%, 100% { opacity: 0.6; }
+	50%      { opacity: 1.0; }
+}
 		</style>
 		<link id="-gd-engine-icon" rel="icon" type="image/png" href="Fly Me to the Moon.icon.png" />
-<link rel="apple-touch-icon" href="Fly Me to the Moon.apple-touch-icon.png"/>
-
+		<link rel="apple-touch-icon" href="Fly Me to the Moon.apple-touch-icon.png"/>
 	</head>
 	<body>
+		<!-- Click-to-Start gate: guarantees a user gesture before any AudioContext -->
+		<div id="start-overlay">
+			<h1>Click to Start</h1>
+			<p>Fly Me to the Moon</p>
+		</div>
+
 		<canvas id="canvas">
 			Your browser does not support the canvas tag.
 		</canvas>
@@ -109,112 +150,126 @@ body {
 			<div id="status-notice"></div>
 		</div>
 
-		<script src="Fly Me to the Moon.js"></script>
 		<script>
-const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"Fly Me to the Moon","experimentalVK":false,"fileSizes":{"Fly Me to the Moon.pck":771088,"Fly Me to the Moon.wasm":39514754},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4};
-const GODOT_THREADS_ENABLED = false;
-const engine = new Engine(GODOT_CONFIG);
+// ---- Click-to-Start: don't load the engine until the user clicks ----
+const overlay = document.getElementById('start-overlay');
 
-(function () {
-	const statusOverlay = document.getElementById('status');
-	const statusProgress = document.getElementById('status-progress');
-	const statusNotice = document.getElementById('status-notice');
+function onUserStart() {
+	overlay.removeEventListener('click', onUserStart);
+	overlay.removeEventListener('touchend', onUserStart);
 
-	let initializing = true;
-	let statusMode = '';
+	// Swap text to "Loading…"
+	overlay.querySelector('h1').textContent = 'Loading\u2026';
+	overlay.querySelector('h1').style.animation = 'none';
+	overlay.querySelector('h1').style.opacity = '1';
+	overlay.querySelector('p').textContent = '';
 
-	function setStatusMode(mode) {
-		if (statusMode === mode || !initializing) {
-			return;
-		}
-		if (mode === 'hidden') {
-			statusOverlay.remove();
-			initializing = false;
-			return;
-		}
-		statusOverlay.style.visibility = 'visible';
-		statusProgress.style.display = mode === 'progress' ? 'block' : 'none';
-		statusNotice.style.display = mode === 'notice' ? 'block' : 'none';
-		statusMode = mode;
+	// Wait 2 seconds, then boot Godot
+	setTimeout(bootGodot, 2000);
+}
+
+overlay.addEventListener('click', onUserStart);
+overlay.addEventListener('touchend', onUserStart);
+
+function bootGodot() {
+	// Hide the overlay
+	overlay.style.display = 'none';
+
+	// Force-resume any AudioContexts that snuck in early
+	const _OrigAC = window.AudioContext || window.webkitAudioContext;
+	if (_OrigAC) {
+		const _acList = [];
+		window.AudioContext = function (...args) {
+			const ctx = new _OrigAC(...args);
+			_acList.push(ctx);
+			// Immediately resume since we already have a user gesture
+			if (ctx.state !== 'running') ctx.resume();
+			return ctx;
+		};
+		window.AudioContext.prototype = _OrigAC.prototype;
+		window.webkitAudioContext = window.AudioContext;
 	}
 
-	function setStatusNotice(text) {
-		while (statusNotice.lastChild) {
-			statusNotice.removeChild(statusNotice.lastChild);
-		}
-		const lines = text.split('\n');
-		lines.forEach((line) => {
-			statusNotice.appendChild(document.createTextNode(line));
-			statusNotice.appendChild(document.createElement('br'));
-		});
-	}
+	// Now load the engine script and start
+	const script = document.createElement('script');
+	script.src = 'Fly Me to the Moon.js';
+	script.onload = function () {
+		const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"Fly Me to the Moon","experimentalVK":false,"fileSizes":{"Fly Me to the Moon.pck":770688,"Fly Me to the Moon.wasm":39514754},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4};
+		const GODOT_THREADS_ENABLED = false;
+		const engine = new Engine(GODOT_CONFIG);
 
-	function displayFailureNotice(err) {
-		console.error(err);
-		if (err instanceof Error) {
-			setStatusNotice(err.message);
-		} else if (typeof err === 'string') {
-			setStatusNotice(err);
-		} else {
-			setStatusNotice('An unknown error occurred.');
-		}
-		setStatusMode('notice');
-		initializing = false;
-	}
+		const statusOverlay = document.getElementById('status');
+		const statusProgress = document.getElementById('status-progress');
+		const statusNotice = document.getElementById('status-notice');
 
-	const missing = Engine.getMissingFeatures({
-		threads: GODOT_THREADS_ENABLED,
-	});
+		let initializing = true;
+		let statusMode = '';
 
-	if (missing.length !== 0) {
-		if (GODOT_CONFIG['serviceWorker'] && GODOT_CONFIG['ensureCrossOriginIsolationHeaders'] && 'serviceWorker' in navigator) {
-			let serviceWorkerRegistrationPromise;
-			try {
-				serviceWorkerRegistrationPromise = navigator.serviceWorker.getRegistration();
-			} catch (err) {
-				serviceWorkerRegistrationPromise = Promise.reject(new Error('Service worker registration failed.'));
+		function setStatusMode(mode) {
+			if (statusMode === mode || !initializing) {
+				return;
 			}
-			// There's a chance that installing the service worker would fix the issue
-			Promise.race([
-				serviceWorkerRegistrationPromise.then((registration) => {
-					if (registration != null) {
-						return Promise.reject(new Error('Service worker already exists.'));
-					}
-					return registration;
-				}).then(() => engine.installServiceWorker()),
-				// For some reason, `getRegistration()` can stall
-				new Promise((resolve) => {
-					setTimeout(() => resolve(), 2000);
-				}),
-			]).then(() => {
-				// Reload if there was no error.
-				window.location.reload();
-			}).catch((err) => {
-				console.error('Error while registering service worker:', err);
+			if (mode === 'hidden') {
+				statusOverlay.remove();
+				initializing = false;
+				return;
+			}
+			statusOverlay.style.visibility = 'visible';
+			statusProgress.style.display = mode === 'progress' ? 'block' : 'none';
+			statusNotice.style.display = mode === 'notice' ? 'block' : 'none';
+			statusMode = mode;
+		}
+
+		function setStatusNotice(text) {
+			while (statusNotice.lastChild) {
+				statusNotice.removeChild(statusNotice.lastChild);
+			}
+			const lines = text.split('\n');
+			lines.forEach((line) => {
+				statusNotice.appendChild(document.createTextNode(line));
+				statusNotice.appendChild(document.createElement('br'));
 			});
-		} else {
-			// Display the message as usual
+		}
+
+		function displayFailureNotice(err) {
+			console.error(err);
+			if (err instanceof Error) {
+				setStatusNotice(err.message);
+			} else if (typeof err === 'string') {
+				setStatusNotice(err);
+			} else {
+				setStatusNotice('An unknown error occurred.');
+			}
+			setStatusMode('notice');
+			initializing = false;
+		}
+
+		const missing = Engine.getMissingFeatures({
+			threads: GODOT_THREADS_ENABLED,
+		});
+
+		if (missing.length !== 0) {
 			const missingMsg = 'Error\nThe following features required to run Godot projects on the Web are missing:\n';
 			displayFailureNotice(missingMsg + missing.join('\n'));
+		} else {
+			setStatusMode('progress');
+			engine.startGame({
+				'onProgress': function (current, total) {
+					if (current > 0 && total > 0) {
+						statusProgress.value = current;
+						statusProgress.max = total;
+					} else {
+						statusProgress.removeAttribute('value');
+						statusProgress.removeAttribute('max');
+					}
+				},
+			}).then(() => {
+				setStatusMode('hidden');
+			}, displayFailureNotice);
 		}
-	} else {
-		setStatusMode('progress');
-		engine.startGame({
-			'onProgress': function (current, total) {
-				if (current > 0 && total > 0) {
-					statusProgress.value = current;
-					statusProgress.max = total;
-				} else {
-					statusProgress.removeAttribute('value');
-					statusProgress.removeAttribute('max');
-				}
-			},
-		}).then(() => {
-			setStatusMode('hidden');
-		}, displayFailureNotice);
-	}
-}());
+	};
+	document.body.appendChild(script);
+}
 		</script>
 	</body>
 </html>
-
