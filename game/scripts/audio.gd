@@ -26,6 +26,7 @@ var inst: Dictionary = {}
 var _mpool: Array = []
 var _mpool_i: int = 0
 var _file_player: AudioStreamPlayer
+var audio_started: bool = false
 var _using_file: bool = false
 var _file_path: String = ""
 var _mode: String = ""
@@ -111,12 +112,18 @@ func _ready():
 	for i in range(MPOOL_SIZE):
 		var mp = AudioStreamPlayer.new()
 		mp.process_mode = Node.PROCESS_MODE_ALWAYS
-		mp.bus = "Music"
+		if OS.get_name() == "Web":
+			mp.bus = "Master"
+		else:
+			mp.bus = "Music"
 		add_child(mp)
 		_mpool.append(mp)
 	_file_player = AudioStreamPlayer.new()
 	_file_player.process_mode = Node.PROCESS_MODE_ALWAYS
-	_file_player.bus = "Music"
+	if OS.get_name() == "Web":
+		_file_player.bus = "Master"
+	else:
+		_file_player.bus = "Music"
 	add_child(_file_player)
 	_build_sounds()
 	_build_instruments()
@@ -124,6 +131,9 @@ func _ready():
 	_apply_volume()
 
 func _setup_buses():
+	if OS.get_name() == "Web":
+		_music_bus = 0 # Master
+		return
 	if AudioServer.get_bus_index("Music") == -1:
 		var idx = AudioServer.bus_count
 		AudioServer.add_bus(idx)
@@ -592,7 +602,10 @@ func _note(key: String, midi_rel: float, db: float, bus: String = "Music"):
 		rel += 12.0
 	p.pitch_scale = pow(2.0, rel / 12.0)
 	p.volume_db = db
-	p.bus = bus
+	if OS.get_name() == "Web":
+		p.bus = "Master"
+	else:
+		p.bus = bus
 	p.play()
 
 # ---------------------------------------------------------------------------

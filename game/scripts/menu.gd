@@ -15,10 +15,15 @@ var main_box: VBoxContainer
 var how_panel: Control
 var hat_ctrl: Control
 
+var click_overlay: Button
+
 func _ready():
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	theme = Style.theme
-	Sfx.set_music("menu")
+	if OS.get_name() == "Web" and not Sfx.audio_started:
+		_build_click_overlay()
+	else:
+		Sfx.set_music("menu")
 	for i in range(170):
 		stars.append({"p": Vector2(randf() * 1280, randf() * 470), "s": randf_range(0.6, 2.0), "ph": randf() * TAU})
 	var x = -20.0
@@ -70,6 +75,31 @@ func _ready():
 	center.add_child(info)
 	start.grab_focus()
 	_build_how()
+
+func _build_click_overlay():
+	click_overlay = Button.new()
+	click_overlay.text = "CLICK ANYWHERE TO START"
+	click_overlay.add_theme_font_size_override("font_size", 48)
+	click_overlay.add_theme_color_override("font_color", Style.GOLD)
+	click_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	click_overlay.z_index = 4096
+	
+	var sb = StyleBoxFlat.new()
+	sb.bg_color = Color(0, 0, 0, 1)
+	click_overlay.add_theme_stylebox_override("normal", sb)
+	click_overlay.add_theme_stylebox_override("hover", sb)
+	click_overlay.add_theme_stylebox_override("pressed", sb)
+	
+	click_overlay.pressed.connect(_on_click_start)
+	add_child(click_overlay)
+
+func _on_click_start():
+	click_overlay.queue_free()
+	click_overlay = null
+	Sfx.audio_started = true
+	Sfx.set_music("menu")
+	if main_box and main_box.get_child_count() > 0:
+		main_box.get_child(0).grab_focus()
 
 func _build_how():
 	how_panel = Control.new()
